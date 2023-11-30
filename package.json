@@ -1,0 +1,21 @@
+{
+  "name": "alx-files_manager",
+  "version": "1.0.0",
+  "description": "summary of backend trimester",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "alx-files_manager"
+  },
+  "author": "Pharmakarios1",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongo": "^0.1.0",
+    "redis": "^4.6.11"
+  }
+}
