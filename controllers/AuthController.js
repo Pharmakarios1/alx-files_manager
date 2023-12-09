@@ -1,92 +1,46 @@
-#!/usr/bin/node
+import sha1 from 'sha1';
+import { v4 as uuidv4 } from 'uuid';
+import redisClient from '../utils/redis';
+import dbClient from '../utils/db';
 
-const { v4 } = require('uuid');
-const dbClient = require('../utils/db');
-const redisClient = require('../utils/redis');
-const { getAuthzHeader, getToken, pwdHashed } = require('../utils/utils');
-const { decodeToken, getCredentials } = require('../utils/utils');
+const { ObjectId } = require('mongodb');
+const dbCli = require('../utils/db');
 
 class AuthController {
-  static async getConnect(req, res) {
-    const authzHeader = getAuthzHeader(req);
-    if (!authzHeader) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
+  static async getConnect(request, response) {
+    const authHeader = request.headers.authorization;
+    if (!authHeader) {
+      return response.status(401).json({ error: 'Unauthorized' });
     }
-    const token = getToken(authzHeader);
-    if (!token) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
-    }
-    const decodedToken = decodeToken(token);
-    if (!decodedToken) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
-    }
-    const { email, password } = getCredentials(decodedToken);
-    const user = await dbClient.getUser(email);
+    const encodedCredentials = authHeader.split(' ')[1];
+    const decodedCredentials = Buffer.from(encodedCredentials, 'base64').toString('utf-8');
+    const [email, password] = decodedCredentials.split(':');
+    const user = await (await dbClient.usersCollection())
+      .findOne({ email, password: sha1(password) });
     if (!user) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
+      return response.status(401).json({ error: 'Unauthorized' });
     }
-    if (user.password !== pwdHashed(password)) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
-    }
-    const accessToken = v4();
-    await redisClient.set(`auth_${accessToken}`, user._id.toString('utf8'), 60 * 60 * 24);
-    res.json({ token: accessToken });
-    res.end();
+    const token = uuidv4();
+
+    await redisClient.set(`auth_${token}`, user._id.toString(), 24 * 60 * 60);
+    return response.status(200).json({ token });
   }
 
-  static async getDisconnect(req, res) {
-    const token = req.headers['x-token'];
+  static async getDisconnect(request, response) {
+    const token = request.headers['x-token'];
     if (!token) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
+      return response.status(401).json({ error: 'Unauthorized' });
     }
-    const id = await redisClient.get(`auth_${token}`);
-    if (!id) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
+    const userId = await redisClient.get(`auth_${token}`);
+    if (!userId) {
+      return response.status(401).json({ error: 'Unauthorized' });
     }
-    const user = await dbClient.getUserById(id);
+    const user = await dbCli.client.db().collection('users').findOne({ _id: ObjectId(userId) });
     if (!user) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
+      return response.status(401).json({ error: 'Unauthorized' });
     }
     await redisClient.del(`auth_${token}`);
-    res.status(204).end();
-  }
-
-  static async getMe(req, res) {
-    const token = req.headers['x-token'];
-    if (!token) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
-    }
-    const id = await redisClient.get(`auth_${token}`);
-    if (!id) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
-    }
-    const user = await dbClient.getUserById(id);
-    if (!user) {
-      res.status(401).json({ error: 'Unauthorized' });
-      res.end();
-      return;
-    }
-    res.json({ id: user._id, email: user.email }).end();
+    return response.status(204).end();
   }
 }
 

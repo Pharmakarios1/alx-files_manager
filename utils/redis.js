@@ -1,36 +1,59 @@
-#!/usr/bin/node
-
-const { createClient } = require('redis');
-const { promisify } = require('util');
+const redis = require('redis');
 
 class RedisClient {
   constructor() {
-    this.client = createClient();
-    this.client.on('error', (err) => console.log(err));
-    this.connected = false;
+    this.client = redis.createClient();
+
+    this.client.on('error', (error) => {
+      console.error('Redis Error:', error);
+    });
+    this.con = false;
     this.client.on('connect', () => {
-      this.connected = true;
+      this.con = true;
+    });
+    this.client.on('end', () => {
+      this.con = false;
     });
   }
 
   isAlive() {
-    return this.connected;
+    return this.con;
   }
 
   async get(key) {
-    const getAsync = promisify(this.client.get).bind(this.client);
-    const val = await getAsync(key);
-    return val;
+    return new Promise((accept, reject) => {
+      this.client.get(key, (error, response) => {
+        if (error) {
+          reject(error);
+        } else {
+          accept(response);
+        }
+      });
+    });
   }
 
-  async set(key, val, dur) {
-    const setAsync = promisify(this.client.set).bind(this.client);
-    await setAsync(key, val, 'EX', dur);
+  async set(key, value, duration) {
+    return new Promise((accept, reject) => {
+      this.client.setex(key, duration, value, (error, response) => {
+        if (error) {
+          reject(error);
+        } else {
+          accept(response);
+        }
+      });
+    });
   }
 
   async del(key) {
-    const delAsync = promisify(this.client.del).bind(this.client);
-    await delAsync(key);
+    return new Promise((accept, reject) => {
+      this.client.del(key, (error, response) => {
+        if (error) {
+          reject(error);
+        } else {
+          accept(response);
+        }
+      });
+    });
   }
 }
 
